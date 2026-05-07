@@ -84,7 +84,7 @@ final class UserProvider
     {
         return $this->withAuth(function ($auth) {
             if (! $auth->hasResolvedGuards()) {
-                return Compatibility::getUserIdFromContext();
+                return Compatibility::getUserIdFromContext() ?: $this->getGuestId();
             }
 
             if ($auth->hasUser()) {
@@ -95,8 +95,23 @@ final class UserProvider
                 return $this->userId($this->rememberedUser);
             }
 
-            return Compatibility::getUserIdFromContext();
+            return Compatibility::getUserIdFromContext() ?: $this->getGuestId();
         });
+    }
+
+    private function getGuestId(): string
+    {
+        try {
+            $request = function_exists('request') ? request() : null;
+
+            if ($request instanceof \Illuminate\Http\Request) {
+                return 'guest_'.substr(md5($request->ip().$request->userAgent()), 0, 12);
+            }
+        } catch (Throwable) {
+            //
+        }
+
+        return '';
     }
 
     private function userId(Authenticatable $user): string

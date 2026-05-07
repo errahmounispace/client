@@ -67,6 +67,7 @@ use Laraowl\Client\Hooks\ResponsePreparedListener;
 use Laraowl\Client\Hooks\RouteMatchedListener;
 use Laraowl\Client\Hooks\RouteMiddleware;
 use Laraowl\Client\Hooks\TerminatingListener;
+use Laraowl\Client\Sensors\SecurityAuditSensor;
 use Laraowl\Client\Http\Middleware\Sample;
 use Laraowl\Client\State\CommandState;
 use Laraowl\Client\State\RequestState;
@@ -162,6 +163,7 @@ final class LaraowlClientServiceProvider extends ServiceProvider
             if ($this->app->runningInConsole()) {
                 $this->registerPublications();
                 $this->registerCommands();
+                $this->registerSchedule();
             }
         } catch (Throwable $e) {
             LaraowlClient::unrecoverableExceptionOccurred($e);
@@ -290,6 +292,14 @@ final class LaraowlClientServiceProvider extends ServiceProvider
         $this->commands([
             Console\InstallCommand::class,
         ]);
+    }
+
+    private function registerSchedule(): void
+    {
+        $this->app->booted(function () {
+            $schedule = $this->app->make(\Illuminate\Console\Scheduling\Schedule::class);
+            $schedule->call(new SecurityAuditSensor($this->core))->hourly();
+        });
     }
 
     private function registerHooks(): void

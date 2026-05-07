@@ -110,6 +110,19 @@ final class Core
     }
 
     /**
+     * @api
+     */
+    public function record(string $type, array $payload): void
+    {
+        $this->ingest->writeNow([
+            't' => $type,
+            'v' => 1,
+            'timestamp' => $this->clock->microtime(),
+            'payload' => $payload,
+        ]);
+    }
+
+    /**
      * @internal
      */
     public function enabled(): bool
