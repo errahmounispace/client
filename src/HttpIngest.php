@@ -77,7 +77,6 @@ final class HttpIngest implements IngestContract
         ]);
 
         try {
-            \Illuminate\Support\Facades\Log::info('Laraowl Attempting to transmit ' . count($records) . ' records to ' . $this->endpoint);
             $client->post('/api/records', [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $this->token,
