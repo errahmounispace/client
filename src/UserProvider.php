@@ -4,6 +4,7 @@ namespace Laraowl\Client;
 
 use Illuminate\Auth\AuthManager;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Model;
 use Laraowl\Client\Types\Str;
 use Throwable;
 
@@ -14,7 +15,7 @@ use function call_user_func;
  */
 final class UserProvider
 {
-    private ?Authenticatable $rememberedUser = null;
+    private ?object $rememberedUser = null;
 
     /**
      * @var (callable(): (null|(callable(Authenticatable): array{id: mixed, name?: mixed, username?: mixed})))
@@ -114,7 +115,7 @@ final class UserProvider
         return '';
     }
 
-    private function userId(Authenticatable $user): string
+    private function userId(object $user): string
     {
         try {
             return Str::tinyText((string) ($this->resolvedDetails($user)['id'] ?? '')); // @phpstan-ignore cast.string
@@ -140,7 +141,7 @@ final class UserProvider
     /**
      * @return array{ id: mixed, name?: mixed, username?: mixed }|null
      */
-    private function resolvedDetails(?Authenticatable $user): ?array
+    private function resolvedDetails(?object $user): ?array
     {
         if ($user === null) {
             return null;
@@ -151,7 +152,7 @@ final class UserProvider
         }
 
         try {
-            $id = $user->getAuthIdentifier();
+            $id = $this->identifierFor($user);
         } catch (Throwable $e) {
             $this->reportResolvingUserIdException($e);
 
@@ -160,21 +161,34 @@ final class UserProvider
 
         $resolver = call_user_func($this->userDetailsResolverResolver);
 
-        if ($resolver === null) {
+        if (! is_null($resolver) && $user instanceof Authenticatable) {
             return $this->resolvedDetails = [
                 'id' => $id,
-                'name' => $user->name ?? '',
-                'username' => $user->email ?? '',
+                ...$resolver($user),
             ];
         }
 
         return $this->resolvedDetails = [
             'id' => $id,
-            ...$resolver($user),
+            'name' => $user->name ?? '',
+            'username' => $user->email ?? '',
         ];
     }
 
-    public function remember(Authenticatable $user): void
+    private function identifierFor(object $user): mixed
+    {
+        if ($user instanceof Authenticatable) {
+            return $user->getAuthIdentifier();
+        }
+
+        if ($user instanceof Model) {
+            return $user->getKey();
+        }
+
+        return $user->id ?? null;
+    }
+
+    public function remember(object $user): void
     {
         $this->rememberedUser = $user;
     }
