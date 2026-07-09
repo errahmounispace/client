@@ -9,6 +9,12 @@ use Laraowl\Client\Types\Str;
 use Throwable;
 
 use function call_user_func;
+use function function_exists;
+use function is_null;
+use function md5;
+use function method_exists;
+use function request;
+use function substr;
 
 /**
  * @internal
@@ -37,16 +43,26 @@ final class UserProvider
      */
     private $reportResolver;
 
+    /**
+     * @var (callable(): list<string>)
+     */
+    private $guardsResolver;
+
     private bool $alreadyReportedResolvingUserIdException = false;
 
+    /**
+     * @param  null|(callable(): list<string>)  $guardsResolver
+     */
     public function __construct(
         callable $withAuth,
         callable $userDetailsResolverResolver,
         callable $reportResolver,
+        ?callable $guardsResolver = null,
     ) {
         $this->withAuth = $withAuth;
         $this->userDetailsResolverResolver = $userDetailsResolverResolver;
         $this->reportResolver = $reportResolver;
+        $this->guardsResolver = $guardsResolver ?? static fn (): array => [];
     }
 
     /**
@@ -59,8 +75,8 @@ final class UserProvider
                 return $this->lazyUserId();
             }
 
-            if ($auth->hasUser()) {
-                return $this->userId($auth->user()); // @phpstan-ignore argument.type
+            if ($user = $this->authenticatedUser($auth)) {
+                return $this->userId($user);
             }
 
             if ($this->rememberedUser) {
@@ -88,8 +104,8 @@ final class UserProvider
                 return Compatibility::getUserIdFromContext() ?: $this->getGuestId();
             }
 
-            if ($auth->hasUser()) {
-                return $this->userId($auth->user()); // @phpstan-ignore argument.type
+            if ($user = $this->authenticatedUser($auth)) {
+                return $this->userId($user);
             }
 
             if ($this->rememberedUser) {
@@ -98,6 +114,41 @@ final class UserProvider
 
             return Compatibility::getUserIdFromContext() ?: $this->getGuestId();
         });
+    }
+
+    /**
+     * Find the user authenticated on any guard, not just the default one.
+     *
+     * A guard only becomes the default one when the `auth` middleware runs, so
+     * token flows such as Sanctum's frequently leave the user on a non-default
+     * guard. Guards are inspected with `hasUser()`, which reads the already
+     * resolved user and never triggers authentication of its own.
+     *
+     * @param  AuthManager  $auth
+     */
+    private function authenticatedUser($auth): ?object
+    {
+        try {
+            if ($auth->hasUser()) {
+                return $auth->user();
+            }
+        } catch (Throwable) {
+            // The default guard's driver may not be resolvable; keep looking.
+        }
+
+        foreach (call_user_func($this->guardsResolver) as $name) {
+            try {
+                $guard = $auth->guard($name);
+
+                if (method_exists($guard, 'hasUser') && $guard->hasUser()) {
+                    return $guard->user();
+                }
+            } catch (Throwable) {
+                continue;
+            }
+        }
+
+        return null;
     }
 
     private function getGuestId(): string
@@ -132,7 +183,7 @@ final class UserProvider
     public function details(): ?array
     {
         $user = $this->withAuth(fn ($auth) => $auth->hasResolvedGuards()
-            ? $auth->user() ?? $this->rememberedUser
+            ? $this->authenticatedUser($auth) ?? $this->rememberedUser
             : $this->rememberedUser);
 
         return $this->resolvedDetails($user);

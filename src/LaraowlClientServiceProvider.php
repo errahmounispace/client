@@ -67,8 +67,8 @@ use Laraowl\Client\Hooks\ResponsePreparedListener;
 use Laraowl\Client\Hooks\RouteMatchedListener;
 use Laraowl\Client\Hooks\RouteMiddleware;
 use Laraowl\Client\Hooks\TerminatingListener;
-use Laraowl\Client\Sensors\SecurityAuditSensor;
 use Laraowl\Client\Http\Middleware\Sample;
+use Laraowl\Client\Sensors\SecurityAuditSensor;
 use Laraowl\Client\State\CommandState;
 use Laraowl\Client\State\RequestState;
 use Laraowl\Client\Support\Uuid;
@@ -78,11 +78,12 @@ use Livewire\LivewireManager;
 use Ramsey\Uuid\Uuid as BaseUuid;
 use Throwable;
 
+use function array_filter;
+use function array_keys;
+use function array_values;
 use function class_exists;
 use function defined;
-use function hash;
 use function microtime;
-use function substr;
 
 /**
  * @internal
@@ -220,7 +221,6 @@ final class LaraowlClientServiceProvider extends ServiceProvider
 
         $this->app->singleton(Sample::class, fn () => new Sample($this->core)); // @phpstan-ignore argument.type
     }
-
 
     private function buildAndRegisterCore(): void
     {
@@ -555,6 +555,21 @@ final class LaraowlClientServiceProvider extends ServiceProvider
             fn (callable $callback) => $this->core->ignore(static fn () => $callback($auth)),
             fn () => $this->core->userDetailsResolver,
             fn () => $this->core->report(...),
+            fn () => $this->guardNames(),
         );
+    }
+
+    /**
+     * Every auth guard the application defines, inspected when identifying the
+     * user behind a request.
+     *
+     * @return list<string>
+     */
+    private function guardNames(): array
+    {
+        /** @var array<string, mixed> $guards */
+        $guards = $this->config->get('auth.guards', []);
+
+        return array_values(array_filter(array_keys($guards), 'is_string'));
     }
 }
